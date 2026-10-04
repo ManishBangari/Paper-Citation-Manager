@@ -19,7 +19,7 @@ def fetch_paper_metadata(paper_id: int) -> None:
             return
 
         try:
-            data = arxiv.fetch_paper(paper.arxiv_id)
+            data = arxiv.fetch_paper(paper.arxiv_id, max_wait=arxiv.BACKGROUND_MAX_WAIT)
         except arxiv.ArxivError as e:
             paper.status = "failed"
             paper.error = str(e)[:500]

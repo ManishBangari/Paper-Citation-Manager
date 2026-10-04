@@ -3,6 +3,7 @@
 No API key is needed. Every failure is turned into an ArxivError so callers
 (the background task and the search endpoint) only have to handle one exception type.
 """
+import hashlib
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -10,12 +11,19 @@ from typing import Optional
 
 import httpx
 
-from .. import utils
+from .. import cache, utils
+from . import ratelimit
 
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 USER_AGENT = "paper-citation-manager/0.1 (student project)"
 TIMEOUT = httpx.Timeout(10.0)
+
+SEARCH_TTL = 60 * 60            # search results stay cached for an hour
+PAPER_TTL = 24 * 60 * 60        # a paper's metadata for a day
+SEARCH_MAX_WAIT = 8.0           # someone is waiting at the search box, so give up on a free slot quickly
+BACKGROUND_MAX_WAIT = 60.0      # a background fetch can afford to queue for the rate limiter
+CACHE_VERSION = "v1"            # bump to throw away every cached entry when the stored shape changes
 
 ATOM = "{http://www.w3.org/2005/Atom}"
 OPENSEARCH = "{http://a9.com/-/spec/opensearch/1.1/}"
@@ -100,10 +108,43 @@ def _parse_feed(xml_text: str) -> list[dict]:
     return results
 
 
-def fetch_paper(arxiv_id: str) -> dict:
-    papers = _parse_feed(_request({"id_list": arxiv_id, "max_results": 1}))
+def _call_arxiv(params: dict, max_wait: float) -> str:
+    try:
+        ratelimit.wait_for_slot(max_wait)
+    except ratelimit.Busy:
+        raise ArxivError("arXiv is busy right now, please try again in a moment")
+    return _request(params)
+
+
+def _paper_key(arxiv_id: str) -> str:
+    return f"arxiv:{CACHE_VERSION}:paper:{arxiv_id}"
+
+
+def _dump(papers: list[dict]) -> list[dict]:
+    return [{**p, "published_at": p["published_at"].isoformat() if p["published_at"] else None} for p in papers]
+
+
+def _load(raw) -> Optional[list[dict]]:
+    """Cached JSON back into paper dicts; anything that does not look right counts as a cache miss."""
+    if not isinstance(raw, list) or not raw:
+        return None
+    try:
+        return [{**p, "published_at": datetime.fromisoformat(p["published_at"]) if p["published_at"] else None,
+                 "arxiv_id": p["arxiv_id"], "title": p["title"], "authors": p["authors"],
+                 "abstract": p["abstract"], "pdf_url": p["pdf_url"]} for p in raw]
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def fetch_paper(arxiv_id: str, max_wait: float = SEARCH_MAX_WAIT) -> dict:
+    cached = _load(cache.cache_get(_paper_key(arxiv_id)))
+    if cached:
+        return cached[0]
+
+    papers = _parse_feed(_call_arxiv({"id_list": arxiv_id, "max_results": 1}, max_wait))
     if not papers:
         raise ArxivNotFound(f"paper {arxiv_id} was not found on arXiv")
+    cache.cache_set(_paper_key(arxiv_id), _dump(papers[:1]), PAPER_TTL)
     return papers[0]
 
 
@@ -128,19 +169,32 @@ def build_search_query(text: str, operator: str = "AND") -> str:
     return f" {operator} ".join(f"all:{term}" for term in search_terms(text))
 
 
-def _search(query: str, limit: int, start: int) -> list[dict]:
-    return _parse_feed(_request({
+def _search(query: str, limit: int, start: int, max_wait: float) -> list[dict]:
+    return _parse_feed(_call_arxiv({
         "search_query": query,
         "start": start,
         "max_results": limit,
         "sortBy": "relevance",
         "sortOrder": "descending",
-    }))
+    }, max_wait))
 
 
-def search_papers(text: str, limit: int = 10, start: int = 0) -> list[dict]:
-    results = _search(build_search_query(text), limit, start)
+def search_papers(text: str, limit: int = 10, start: int = 0, max_wait: float = SEARCH_MAX_WAIT) -> list[dict]:
+    query = build_search_query(text)
+    digest = hashlib.sha1(query.lower().encode()).hexdigest()
+    key = f"arxiv:{CACHE_VERSION}:search:{limit}:{start}:{digest}"
+
+    cached = _load(cache.cache_get(key))
+    if cached is not None:
+        return cached
+
+    results = _search(query, limit, start, max_wait)
     if not results and start == 0 and len(search_terms(text)) > 1:
         # nothing matched every term: fall back to matching any term, best matches first
-        results = _search(build_search_query(text, "OR"), limit, start)
+        results = _search(build_search_query(text, "OR"), limit, start, max_wait)
+
+    if results:
+        cache.cache_set(key, _dump(results), SEARCH_TTL)
+        # saving any of these papers later then needs no call to arXiv at all
+        cache.cache_set_many({_paper_key(r["arxiv_id"]): _dump([r]) for r in results}, PAPER_TTL)
     return results

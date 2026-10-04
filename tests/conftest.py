@@ -7,8 +7,10 @@ from app.main import app
 from app.oauth2 import create_access_token
 from app.config import settings
 from app.database import get_db, Base
-from app import models, database
-from app.services import arxiv as arxiv_service
+import fakeredis
+
+from app import models, database, cache
+from app.services import arxiv as arxiv_service, ratelimit
 from tests import arxiv_samples
 from alembic import command
 
@@ -24,6 +26,15 @@ engine = create_engine(SQLALCHEMY_DATABASE_URL)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # client = TestClient(app)
+
+@pytest.fixture(autouse=True)
+def isolate_redis(monkeypatch):
+    """Every test gets its own empty fake Redis and no 3-second waits, and never touches a real Redis."""
+    monkeypatch.setattr(cache, "_client", fakeredis.FakeRedis(server=fakeredis.FakeServer(), decode_responses=True))
+    monkeypatch.setattr(cache, "_down_until", 0.0)
+    monkeypatch.setattr(ratelimit, "ARXIV_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(ratelimit, "_local_next", 0.0)
+
 
 @pytest.fixture()
 def session():
