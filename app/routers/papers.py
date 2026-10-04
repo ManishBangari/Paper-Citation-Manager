@@ -1,12 +1,13 @@
 from typing import Literal, Optional
 
 from .. import models, schemas, oauth2
-from fastapi import Response, status, HTTPException, Depends, APIRouter, Query
+from fastapi import Response, status, HTTPException, Depends, APIRouter, Query, BackgroundTasks
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..services.papers import fetch_paper_metadata
 
 
 router = APIRouter(
@@ -25,7 +26,7 @@ def get_own_paper(id: int, db: Session, current_user: models.User):
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=schemas.Paper)
-def create_paper(paper: schemas.PaperCreate, db: Session = Depends(get_db), current_user: models.User = Depends(oauth2.get_current_user)):
+def create_paper(paper: schemas.PaperCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: models.User = Depends(oauth2.get_current_user)):
     new_paper = models.Paper(arxiv_id=paper.arxiv_id, owner_id=current_user.id)
     db.add(new_paper)
     try:
@@ -35,6 +36,9 @@ def create_paper(paper: schemas.PaperCreate, db: Session = Depends(get_db), curr
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail=f"paper {paper.arxiv_id} is already in your library")
     db.refresh(new_paper)
+
+    # the response goes out as 'pending'; the metadata is filled in right after it is sent
+    background_tasks.add_task(fetch_paper_metadata, new_paper.id)
 
     return new_paper
 
@@ -69,3 +73,20 @@ def delete_paper(id: int, db: Session = Depends(get_db), current_user: models.Us
     db.commit()
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{id}/retry", status_code=status.HTTP_202_ACCEPTED, response_model=schemas.Paper)
+def retry_paper(id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: models.User = Depends(oauth2.get_current_user)):
+    paper = get_own_paper(id, db, current_user)
+    # 'pending' is allowed too: background tasks live in memory, so a server restart can leave a paper stuck there
+    if paper.status == "done":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="this paper was already fetched from arXiv")
+
+    paper.status = "pending"
+    paper.error = None
+    db.commit()
+    db.refresh(paper)
+    background_tasks.add_task(fetch_paper_metadata, paper.id)
+
+    return paper

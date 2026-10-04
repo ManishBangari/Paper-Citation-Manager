@@ -101,3 +101,13 @@ class Note(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ArxivResult(BaseModel):
+    arxiv_id: str
+    title: str
+    authors: str
+    abstract: str
+    published_at: Optional[datetime] = None
+    pdf_url: str
+    in_library: bool = False

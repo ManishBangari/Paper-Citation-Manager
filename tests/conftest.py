@@ -7,7 +7,9 @@ from app.main import app
 from app.oauth2 import create_access_token
 from app.config import settings
 from app.database import get_db, Base
-from app import models
+from app import models, database
+from app.services import arxiv as arxiv_service
+from tests import arxiv_samples
 from alembic import command
 
 
@@ -35,7 +37,7 @@ def session():
         db.close()
     
 @pytest.fixture()
-def client(session):
+def client(session, monkeypatch):
     def override_get_db():
         try:
             yield session
@@ -44,6 +46,9 @@ def client(session):
 
 
     app.dependency_overrides[get_db] = override_get_db
+    # background tasks open their own session and call arXiv: point them at the test database and a fake arXiv
+    monkeypatch.setattr(database, "SessionLocal", lambda: session)
+    monkeypatch.setattr(arxiv_service, "_request", arxiv_samples.default_fake_request)
     yield TestClient(app)
 
 @pytest.fixture
