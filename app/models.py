@@ -1,7 +1,7 @@
 from sqlalchemy.orm import relationship
 
 from .database import Base
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Text, UniqueConstraint, text
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Text, UniqueConstraint, text, func
 from sqlalchemy.sql.sqltypes import TIMESTAMP
 
 
@@ -49,3 +49,13 @@ class Paper(Base):
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
 
     owner = relationship("User")
+
+
+class Note(Base):
+    __tablename__ = "notes"
+    id = Column(Integer, primary_key=True, nullable=False)
+    paper_id = Column(Integer, ForeignKey("papers.id", ondelete="CASCADE"), nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'))
+    updated_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text('now()'), onupdate=func.now())

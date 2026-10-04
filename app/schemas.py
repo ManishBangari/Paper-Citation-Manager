@@ -1,5 +1,5 @@
 # making a schema class for posts
-from pydantic import BaseModel, EmailStr, conint, ConfigDict, field_validator
+from pydantic import BaseModel, EmailStr, conint, ConfigDict, field_validator, Field
 from datetime import datetime
 from typing import Optional
 
@@ -77,5 +77,27 @@ class Paper(BaseModel):
     status: str
     error: Optional[str] = None
     created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NoteCreate(BaseModel):
+    content: str = Field(max_length=10000)
+
+    @field_validator("content")
+    @classmethod
+    def not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("note cannot be empty")
+        return v
+
+class Note(BaseModel):
+    id: int
+    paper_id: int
+    owner_id: int
+    content: str
+    created_at: datetime
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

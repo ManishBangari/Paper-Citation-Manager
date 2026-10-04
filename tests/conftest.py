@@ -143,3 +143,22 @@ def test_papers(test_user, test_user2, session):
     session.commit()
 
     return session.query(models.Paper).order_by(models.Paper.id).all()
+
+@pytest.fixture
+def test_notes(test_papers, test_user, test_user2, session):
+    # test_papers[0], [1], [2] belong to test_user; test_papers[3] belongs to test_user2
+    notes_data = [
+        {"paper_id": test_papers[0].id, "owner_id": test_user['id'],
+         "content": "Scaled dot-product: divide by sqrt(d_k) to stabilize softmax"},
+        {"paper_id": test_papers[0].id, "owner_id": test_user['id'],
+         "content": "Multi-head attention runs h attention functions in parallel"},
+        {"paper_id": test_papers[1].id, "owner_id": test_user['id'],
+         "content": "BERT masks 15% of the input tokens"},
+        {"paper_id": test_papers[3].id, "owner_id": test_user2['id'],
+         "content": "user two private note about attention"},
+    ]
+
+    session.add_all([models.Note(**note) for note in notes_data])
+    session.commit()
+
+    return session.query(models.Note).order_by(models.Note.id).all()
