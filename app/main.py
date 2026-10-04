@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import models
 from .database import engine
-from .routers import post, users, auth, vote, papers, notes, arxiv
+from .routers import post, users, auth, vote, papers, notes, arxiv, bibtex
 from .config import settings
 
 # posts?limit=5&skip=0&search=welcome%50post
@@ -39,6 +39,7 @@ app.include_router(vote.router)
 app.include_router(papers.router)
 app.include_router(notes.router)
 app.include_router(arxiv.router)
+app.include_router(bibtex.router)
 
 '''
 @app.get("/sqlalchemy")

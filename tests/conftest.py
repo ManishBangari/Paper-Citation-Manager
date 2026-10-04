@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 import pytest
+from datetime import datetime, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
@@ -146,9 +147,11 @@ def test_posts(test_user, session, test_user2):
 def test_papers(test_user, test_user2, session):
     papers_data = [
         {"arxiv_id": "1706.03762", "title": "Attention Is All You Need",
-         "authors": "Ashish Vaswani, Noam Shazeer", "status": "done", "owner_id": test_user['id']},
+         "authors": "Ashish Vaswani, Noam Shazeer", "status": "done", "owner_id": test_user['id'],
+         "published_at": datetime(2017, 6, 12, tzinfo=timezone.utc)},
         {"arxiv_id": "1810.04805", "title": "BERT: Pre-training of Deep Bidirectional Transformers",
-         "authors": "Jacob Devlin, Ming-Wei Chang", "status": "done", "owner_id": test_user['id']},
+         "authors": "Jacob Devlin, Ming-Wei Chang", "status": "done", "owner_id": test_user['id'],
+         "published_at": datetime(2018, 10, 11, tzinfo=timezone.utc)},
         {"arxiv_id": "1912.09363", "owner_id": test_user['id']},
         # same paper as the first one, saved by a different user
         {"arxiv_id": "1706.03762", "title": "Attention Is All You Need",
