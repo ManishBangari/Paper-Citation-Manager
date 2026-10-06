@@ -10,8 +10,6 @@ services:
       - 80:8000
 
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
-    # env_file:
-    #   - .env
     environment:
       - DATABASE_HOSTNAME=${DATABASE_HOSTNAME}
       - DATABASE_PORT=${DATABASE_PORT}
@@ -22,6 +20,15 @@ services:
       - ALGORITHM=${ALGORITHM}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
       - REDIS_URL=redis://redis:6379/0
+
+  ui:
+    build: ./ui
+    depends_on:
+      - app
+    ports:
+      - 8501:8501
+    environment:
+      - API_URL=http://app:8000
 
   redis:
     image: redis:7-alpine
@@ -34,7 +41,7 @@ services:
       retries: 10
 
   postgres:
-    image: postgres
+    image: postgres:16
     environment:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
       POSTGRES_DB: ${DATABASE_NAME}

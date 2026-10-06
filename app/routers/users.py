@@ -1,4 +1,4 @@
-from .. import models, schemas, utils
+from .. import models, schemas, utils, oauth2
 from fastapi import FastAPI, Response, status, HTTPException, Depends, APIRouter
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -30,9 +30,9 @@ def create_users(user: schemas.UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 @router.get("/{id}", response_model=schemas.UserOut)
-def get_user(id: int, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.id == id).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
+def get_user(id: int, current_user: models.User = Depends(oauth2.get_current_user)):
+    # you can only look up yourself, so other people's accounts cannot be probed by id
+    if id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"user with id: {id} was not found")
-    return user
+    return current_user

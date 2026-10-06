@@ -1,9 +1,12 @@
 name: Build and Deploy Code
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
-  build: 
+  build:
     environment:
       name: testing
     env:
@@ -18,8 +21,8 @@ jobs:
 
     services:
       postgres:
-        image: postgres
-        env: 
+        image: postgres:16
+        env:
           POSTGRES_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
           POSTGRES_DB: ${{ secrets.DATABASE_NAME }}_test
         ports:
@@ -30,60 +33,56 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     runs-on: ubuntu-latest
-    steps:  
+    steps:
       - name: pulling git repo
         uses: actions/checkout@v4
-      - name: say hi to manish
-        run: echo "hello manish"
       - name: Install Python version 3.12
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: updated pip
         run: python -m pip install --upgrade pip
-      - name : install all dependencies
+      - name: install all dependencies
         run: pip install -r requirements-dev.txt
-      - name: test with pytest 
+      # the tests use fakeredis and a fake arXiv, so they need no Redis server and no internet
+      - name: test with pytest
         run: pytest
 
-      # - name: Login to Docker Hub
-      #   uses: docker/login-action@v1
-      #   with:
-      #     username: ${{ secrets.DOCKER_HUB_USERNAME }}
-      #     password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-
-      # - name: Set up Docker Buildx
-      #   id: buildx
-      #   uses: docker/setup-buildx-action@v1
-
-      # - name: Build and push
-      #   id: docker_build
-      #   uses: docker/build-push-action@v2
-      #   with:
-      #     context: ./
-      #     file: ./Dockerfile
-      #     builder: ${{ steps.buildx.outputs.name }}
-      #     push: true
-      #     tags: ${{ secrets.DOCKER_HUB_USERNAME }}/fastapi-ga:latest
-      #     cache-from: type=local,src=/tmp/.buildx-cache
-      #     cache-to: type=local,dest=/tmp/.buildx-cache
-      # - name: Image digest
-      #   run: echo ${{ steps.docker_build.outputs.digest }}
-
-      
-  deploy:
-    name: Push changes to production
+  docker:
+    name: Build the Docker images
     runs-on: ubuntu-latest
     needs: [build]
-
     steps:
-      - name: deploying stuff
-        run: echo "going for deployment"
+      - name: pulling git repo
+        uses: actions/checkout@v4
 
-      # - name: Deploy to Render
-      #   run: |
-      #     curl "$RENDER_DEPLOY_HOOK_URL"
-      #   env:
-      #     RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    
+      # images are only pushed for commits on main; pull requests just prove that they build
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: Build the API image (and push it on main)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            manishbangari/fastapi:latest
+            manishbangari/fastapi:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build the UI image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./ui
+          push: false
+          tags: paper-manager-ui:ci
+          cache-from: type=gha,scope=ui
+          cache-to: type=gha,scope=ui,mode=max

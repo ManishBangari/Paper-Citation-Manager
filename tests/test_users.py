@@ -49,5 +49,20 @@ def test_token_of_deleted_user_is_rejected(authorized_client, test_user, session
     session.query(models.User).filter(models.User.id == test_user["id"]).delete()
     session.commit()
 
-    res = authorized_client.get("/posts/")
+    res = authorized_client.get("/papers/")
     assert res.status_code == 401
+
+def test_get_own_user(authorized_client, test_user):
+    res = authorized_client.get(f"/users/{test_user['id']}")
+    assert res.status_code == 200
+    assert res.json()["email"] == test_user["email"]
+    assert "password" not in res.json()
+
+def test_cannot_look_up_other_users(authorized_client, test_user2):
+    assert authorized_client.get(f"/users/{test_user2['id']}").status_code == 404
+
+def test_get_user_not_exist(authorized_client):
+    assert authorized_client.get("/users/88888").status_code == 404
+
+def test_unauthorized_get_user(client, test_user):
+    assert client.get(f"/users/{test_user['id']}").status_code == 401

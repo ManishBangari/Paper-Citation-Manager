@@ -1,9 +1,8 @@
 from fastapi.testclient import TestClient
 import pytest
 from datetime import datetime, timezone
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, MetaData
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
 from app.main import app
 from app.oauth2 import create_access_token
 from app.config import settings
@@ -13,7 +12,6 @@ import fakeredis
 from app import models, database, cache
 from app.services import arxiv as arxiv_service, ratelimit
 from tests import arxiv_samples
-from alembic import command
 
 
 # SQLALCHEMY_DATABASE_URL = 'postgresql://postgres:password123@localhost:5432/fastapi_test'
@@ -37,8 +35,17 @@ def isolate_redis(monkeypatch):
     monkeypatch.setattr(ratelimit, "_local_next", 0.0)
 
 
+@pytest.fixture(scope="session")
+def clean_test_database():
+    """Once per test run, drop every table in the test database, including ones the current models no longer know
+    about (posts and votes from the old course schema). Otherwise they block dropping `users` below."""
+    leftovers = MetaData()
+    leftovers.reflect(bind=engine)
+    leftovers.drop_all(bind=engine)
+
+
 @pytest.fixture()
-def session():
+def session(clean_test_database):
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
@@ -102,46 +109,6 @@ def authorized_client(client, token):
     }
 
     return client
-
-@pytest.fixture
-def test_posts(test_user, session, test_user2):
-    posts_data = [{
-        "title": "first title",
-        "content": "first content",
-        "owner_id": test_user['id']
-    }, {
-        "title": "2nd title",
-        "content": "2nd content",
-        "owner_id": test_user['id']
-    },
-        {
-        "title": "3rd title",
-        "content": "3rd content",
-        "owner_id": test_user['id']
-    },
-    {
-            "title": "3rd title",
-            "content": "3rd content",
-            "owner_id": test_user2['id']
-        }]
-
-    def create_post_model(post):
-        return models.Post(**post)
-    
-    post_map = map(create_post_model, posts_data)
-    posts = list(post_map)
-
-    session.add_all(posts)
-
-    # session.add_all([models.user(title="first title", content="first content", owner_id=test_user['id']),
-    #                 models.user(title="2nd title", content="2nd content", owner_id=test_user['id']),
-    #                 models.user(title="3rd title", content="3rd content", owner_id=test_user['id'])
-                    # ])
-
-    session.commit()
-
-    posts = session.query(models.Post).all()
-    return posts
 
 @pytest.fixture
 def test_papers(test_user, test_user2, session):

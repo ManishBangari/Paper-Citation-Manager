@@ -1,8 +1,5 @@
-from time import time
-
 from dotenv import load_dotenv
 
-from psycopg.rows import dict_row
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from .config import settings
