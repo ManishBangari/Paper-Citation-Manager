@@ -7,7 +7,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - 8000:8000
+      - 127.0.0.1:8000:8000
     volumes:
       - ./:/usr/src/app:ro
 
@@ -28,7 +28,7 @@ services:
     depends_on:
       - app
     ports:
-      - 8501:8501
+      - 127.0.0.1:8501:8501
     volumes:
       - ./ui:/usr/src/ui:ro
     environment:
