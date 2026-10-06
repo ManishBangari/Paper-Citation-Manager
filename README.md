@@ -1,5 +1,7 @@
 # Paper & Citation Manager
 
+[![CI](https://github.com/ManishBangari/Paper-Citation-Manager/actions/workflows/build-deploy.yaml/badge.svg)](https://github.com/ManishBangari/Paper-Citation-Manager/actions/workflows/build-deploy.yaml)
+
 A personal research library. Search arXiv, save papers, keep notes on them and export BibTeX, through a REST API
 (FastAPI) and a small web interface (Streamlit).
 
